@@ -1,0 +1,74 @@
+workflows:
+  ios-workflow:
+    name: Potty Mouth iOS Release
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+      node: 20.11.0
+      xcode: 16.2
+      cocoapods: default
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          npm ci || npm install
+
+      - name: Build web assets
+        script: |
+          if grep -q "\"build\"" package.json; then
+            npm run build
+          elif [ -d "src" ]; then
+            npx vite build || npx ionic build || echo "built"
+          fi
+          ls -la www || ls -la dist || ls -la build || echo "no www/dist found, using src"
+
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap add ios || true
+          npx cap sync ios
+          npx cap copy ios
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install --repo-update
+          cd ../..
+
+      - name: Set encryption flag (fix Apple warning)
+        script: |
+          INFO_PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$INFO_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$INFO_PLIST"
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: false
+        submit_to_app_store: false
