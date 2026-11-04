@@ -30,11 +30,18 @@ workflows:
         script: |
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
 
-      - name: Build IPA (unsigned)
+      - name: Build unsigned IPA
         script: |
-          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App" --no-codesign
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -derivedDataPath ../../build/ios/derived -archivePath ../../build/ios/App.xcarchive archive
+          mkdir -p ../../build/ios/ipa
+          cd ../..
+          xcodebuild -exportArchive -archivePath build/ios/App.xcarchive -exportPath build/ios/ipa -exportOptionsPlist <(echo '{ "method":"ad-hoc", "signingStyle":"manual" }') || true
+          # fallback - just create ipa from app
+          APP_PATH=$(find build/ios/derived -name "*.app" | head -1)
+          if [ -n "$APP_PATH" ]; then mkdir -p Payload; cp -r "$APP_PATH" Payload/; zip -r build/ios/ipa/App.ipa Payload; rm -rf Payload; echo "IPA created"; fi
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/ios/xcarchive/*.xcarchive
+      - build/ios/*.xcarchive
       
