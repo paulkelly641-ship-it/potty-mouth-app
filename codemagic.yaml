@@ -9,6 +9,8 @@ workflows:
       node: 22.12.0
       xcode: 16.2
       cocoapods: default
+    integrations:
+      app_store_connect: integration
     scripts:
       - name: Install npm dependencies
         script: |
@@ -26,30 +28,28 @@ workflows:
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap add ios
           npx cap copy ios
-          ls -la ios/App/
 
       - name: Set encryption flag
         script: |
-          INFO_PLIST="ios/App/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$INFO_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$INFO_PLIST"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
 
       - name: Set up code signing
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create || echo "unsigned build"
-          keychain add-certificates || true
-          xcode-project use-profiles || true
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
 
       - name: Build IPA
         script: |
-          if [ -d "ios/App/App.xcworkspace" ]; then
-            echo "Building with workspace"
-            xcode-project build-ipa --workspace "ios/App/App.xcworkspace" --scheme "App"
-          else
-            echo "Building with project (no pods)"
-            xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
-          fi
+          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
 
     artifacts:
       - build/ios/ipa/*.ipa
-      
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: true
+        
