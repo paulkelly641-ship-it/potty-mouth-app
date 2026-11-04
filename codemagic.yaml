@@ -19,18 +19,20 @@ workflows:
       - name: Build web assets
         script: |
           if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
-          npm run build || echo "using www"
-          ls -la www
+          npm run build || echo "no build script, using www folder"
+          ls -la www || ls -la
 
       - name: Add iOS platform
         script: |
-          npx cap add ios || true
+          rm -rf ios || true
+          npx cap add ios
           npx cap sync ios
           npx cap copy ios
+          ls -la ios/App/
 
       - name: Install CocoaPods
         script: |
-          cd ios/App && pod install --repo-update && cd ../..
+          cd ios/App && pod install --repo-update
 
       - name: Set encryption flag
         script: |
@@ -40,7 +42,7 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create || echo "signing fetch needs integration, continuing"
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create || echo "no integration yet, building without signing"
           keychain add-certificates || true
           xcode-project use-profiles || true
 
