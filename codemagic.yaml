@@ -14,44 +14,50 @@ workflows:
     scripts:
       - name: Install npm dependencies
         script: |
-          npm install --save @capacitor/core @capacitor/cli @capacitor/ios || true
-          npm install || true
+          npm ci || npm install
 
-      - name: Prepare www folder
+      - name: Build web assets
         script: |
-          if [ ! -d "www" ] && [ -f "index.html" ]; then
-            echo "Creating www from root"
-            mkdir -p www
-            cp index.html www/index.html 2>/dev/null || true
-            cp -r *.js www/ 2>/dev/null || true
-            cp -r *.css www/ 2>/dev/null || true
-          fi
-          ls -la www/ || echo "no www"
+          if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
+          npm run build || echo "using www"
+          ls -la www
 
       - name: Add iOS platform
         script: |
-          npx @capacitor/cli add ios || true
-          npx @capacitor/cli sync ios || true
-          npx @capacitor/cli copy ios || true
+          npx cap add ios || true
+          npx cap sync ios
+          npx cap copy ios
 
       - name: Install CocoaPods
         script: |
-          cd ios/App
-          pod install --repo-update || pod install
-          cd ../..
+          cd ios/App && pod install --repo-update && cd ../..
 
-      - name: Set encryption flag
+      - name: Set encryption flag (fix ITSAppUsesNonExemptEncryption)
         script: |
           INFO_PLIST="ios/App/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$INFO_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$INFO_PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$INFO_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$INFO_PLIST"
 
-      - name: Build unsigned IPA for App Store
+      - name: Set up code signing
         script: |
-          xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME" ||           xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGNING_ALLOWED=NO || true
-          ls -la build/ios/ipa/ || ls -la $CM_BUILD_DIR/ || true
+          keychain initialize
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build IPA and publish to App Store Connect
+        script: |
+          xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - $CM_BUILD_DIR/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
-      
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: false
+        submit_to_app_store: false
+        
