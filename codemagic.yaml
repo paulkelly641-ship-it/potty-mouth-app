@@ -1,0 +1,26 @@
+workflows:
+  ios-workflow:
+    name: Potty Mouth iOS Release
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+      node: 20.11.0
+      xcode: 16.2
+    scripts:
+      - name: Prepare www
+        script: |
+          if [ ! -d "www" ] && [ -f "index.html" ]; then mkdir -p www; cp index.html www/; fi
+          ls -la www/
+      - name: Add iOS
+        script: |
+          npx cap add ios || true
+          npx cap sync ios
+      - name: Pods
+        script: |
+          cd ios/App && pod install && cd ../..
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --workspace ios/App/App.xcworkspace --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
