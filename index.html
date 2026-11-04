@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Potty Mouth Songwriter</title>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--ink:#1d1a17;--mut:#6b645c;--acc:#e0361f;--line:#e6dfd5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17140f;--card:#221e18;--ink:#f3ede4;--mut:#a39a8d;--acc:#ff5a3f;--line:#352f26;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17140f;--card:#221e18;--ink:#f3ede4;--mut:#a39a8d;--acc:#ff5a3f;--line:#352f26;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:26px;margin:4px 0 2px}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+label:first-child{margin-top:0}
+select,input[type=text]{box-sizing:border-box;width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.lv{display:flex;gap:8px}
+.lv button{flex:1;padding:10px 4px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;cursor:pointer}
+.lv button.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.go{width:100%;margin-top:14px;padding:14px;border:0;border-radius:12px;background:var(--acc);color:#fff;font:600 17px inherit;font-family:inherit;cursor:pointer}
+#out h2{margin:0 0 2px;font-size:20px}
+.tag{color:var(--mut);font-size:14px;margin:0 0 10px}
+.sec{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin:14px 0 4px}
+.l{margin:0}
+.ad{color:var(--mut);font-style:italic}
+.row{display:flex;gap:8px;margin-top:14px}
+.row button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;cursor:pointer}
+.warn{font-size:12px;color:var(--mut);text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>🎤 Potty Mouth Songwriter</h1>
+<p class="sub">Original songs with a very dirty vocabulary. Pick your poison.</p>
+<div class="card">
+<label for="topic">What’s the song about?</label>
+<select id="topic"></select>
+<label for="genre">Genre</label>
+<select id="genre"></select>
+<label>Cuss level</label>
+<div class="lv" id="lv"></div>
+<div id="aiwrap" hidden><label for="custom">Or your own topic</label><input type="text" id="custom" maxlength="80" placeholder="e.g. my cat judging me"><label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--ink);margin-top:12px"><input type="checkbox" id="ai" checked style="width:auto"> ✨ Fresh AI-written lyrics every time</label></div><button class="go" id="go">Write me a song</button>
+</div>
+<div class="card" id="out" hidden></div>
+<p class="warn">Contains strong language. Lyrics are made up on the spot.</p>
+</main>
+<script>
+var POOLS={
+ mild:{A:["damn","freaking","blasted"],X:["oh hell","dang","crap"],N:["jerk","creep","punk"]},
+ spicy:{A:["goddamn","bloody","crappy"],X:["holy hell","what the hell","damn it"],N:["jackass","bastard","ass"]},
+ nuclear:{A:["fucking","goddamn","shitty"],X:["holy shit","oh fuck","fuck me"],N:["asshole","shithead","dipshit"]}
+};
+var LV=[["mild","Mild 😬"],["spicy","Spicy 🌶️"],["nuclear","Nuclear ☢️"]];
+var TOPICS={
+ monday:{n:"Monday mornings",title:["{A} Monday Blues","Monday, You {N}","Six AM and {A} Done"],
+  v:[["I woke up at six to a {A} alarm clock scream,","living the most {A} nightmare of a dream."],
+     ["My boss called a meeting that could’ve been mail,","I’m {A} done with this corporate fail."],
+     ["The coffee machine broke and I’m losing my head,","I’d rather be {A} anywhere else instead."],
+     ["Four more days until I’m free,","this {A} week is killing me."]],
+  c:["Oh Monday, you {N}, you ruin my day,","{X}, why can’t you just go away?","Oh Monday, you {A} mess, I confess,","I’m {A} done, I’m not gonna stress."]},
+ traffic:{n:"Traffic",title:["{A} Interstate","Move, You {N}","Bumper to {A} Bumper"],
+  v:[["Forty minutes crawling on the {A} interstate,","I swear I’m gonna miss my {A} date."],
+     ["Some {N} cut me off and slammed the brakes,","that’s the {A} kind of day it takes."],
+     ["Horns are blaring, {X}, what a mess,","this {A} road is stress on stress."],
+     ["Ten more miles and I’m losing my mind,","this {A} traffic is the worst of its kind."]],
+  c:["Move, you {N}, move your car,","you’re not a {A} movie star.","Beep beep, {X}, I’m not okay,","I’m gonna be {A} late today."]},
+ ex:{n:"My ex",title:["So Long, You {N}","{A} Heartbreak Hotel","Deleted Your Number"],
+  v:[["You said you’d call, you never did,","you {A} liar, you {N} kid."],
+     ["I deleted your number and your {A} face,","you’re replaced, in a {A} better place."],
+     ["Your new boo’s a {N}, no offense,","and your taste in people makes no sense."],
+     ["I’m better off, I’m fine, I swear,","{X}, I’m crying in this chair."]],
+  c:["So long, you {N}, don’t come back,","you’re a {A} heart attack.","I’m {A} free and feeling fine,","you’re a {N}, and I’m divine."]},
+ coffee:{n:"Coffee",title:["{A} Brew","Don’t Talk to Me Yet","Black as My {A} Soul"],
+  v:[["Don’t talk to me before my cup,","I’m a {A} mess until I wake up."],
+     ["Black as my soul and hot as hell,","one {A} sip and I’m feeling well."],
+     ["Decaf’s a lie, it’s a {A} sham,","only a {N} drinks it, damn."],
+     ["Three cups deep and my hands are shaking,","{X}, I’m a {A} earthquake in the making."]],
+  c:["Coffee, coffee, {A} brew,","I’d be a {N} without you.","Pour it strong and pour it black,","{X}, I’m {A} back."]},
+ gym:{n:"The gym",title:["Leg Day, You {N}","{A} Squat Rack","No Pain, {A} Pain"],
+  v:[["I walked in the gym with a {A} big plan,","left in a crawl like a broken man."],
+     ["Some {N} hogs the bench and he’s on his phone,","I’m {A} waiting here all alone."],
+     ["Rep number nine and my legs catch fire,","{X}, I’m a {A} sweaty liar."],
+     ["Protein shake, a {A} treat,","tomorrow I can’t feel my feet."]],
+  c:["Leg day, leg day, you {A} pain,","I’ll never walk down stairs again.","Lift it up and put it down,","{X}, I’m the {A} strongest in town."]},
+ wifi:{n:"Bad Wi-Fi",title:["{A} Buffering","Wi-Fi, You {N}","One Bar of {A} Hope"],
+  v:[["The router blinks and the movie freezes,","{X}, this {A} internet teases us."],
+     ["I paid for fast and I got a snail,","this {A} service is a total fail."],
+     ["Turned it off and on like they told me to,","still no {A} signal, what do I do?"],
+     ["Video call and my face froze stuck,","{X}, what a {A} bad luck."]],
+  c:["Wi-Fi, Wi-Fi, you {N}, you lie,","one {A} bar and a {A} sigh.","Buffering, {X}, circle of doom,","I’m screaming in my {A} room."]},
+ landlord:{n:"My landlord",title:["Fix the {A} Sink","Landlord, You {N}","Two Grand for a Closet"],
+  v:[["Rent is due and it’s going up again,","{A} landlord, you’re no friend."],
+     ["The sink is leaking, the heater’s dead,","you’re a {N}, that’s what I said."],
+     ["Two grand for a closet with a mold-green wall,","{X}, I’m a {A} fool for it all."],
+     ["You keep my deposit, you keep it all,","I hope your {A} ceiling falls."]],
+  c:["Fix the sink, you cheap {N},","I’m {A} broke again and again.","Oh {X}, pay the heat,","I’m {A} freezing in my seat."]}
+};
+var GENRES={
+ country:{n:"Country",ad:"(yeehaw, y’all)",tip:"Acoustic guitar, 96 BPM, a little twang"},
+ rap:{n:"Rap",ad:"(yeah, uh, skrrt)",tip:"Heavy 808s, 90 BPM, confident flow"},
+ punk:{n:"Pop-punk",ad:"(1-2-3-4!)",tip:"Fast power chords, 170 BPM, shouted chorus"},
+ shanty:{n:"Sea shanty",ad:"(heave ho, ye bastards!)",tip:"Stomp and clap, 110 BPM, everyone sings along"},
+ lullaby:{n:"Lullaby",ad:"(hush now, little one…)",tip:"Soft music box, 60 BPM, sweetly sung"}
+};
+var level="spicy",song="";
+function $(i){return document.getElementById(i)}
+function pick(a){return a[Math.floor(Math.random()*a.length)]}
+function fill(s,L){return s.replace(/\{(A|X|N)\}/g,function(m,k,off){var w=pick(POOLS[L][k]);return off===0?w[0].toUpperCase()+w.slice(1):w})}
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+function init(){
+ var t=$("topic"),g=$("genre"),lv=$("lv");
+ Object.keys(TOPICS).forEach(function(k){t.add(new Option(TOPICS[k].n,k))});
+ Object.keys(GENRES).forEach(function(k){g.add(new Option(GENRES[k].n,k))});
+ LV.forEach(function(p){var b=document.createElement("button");b.textContent=p[1];b.className=p[0]===level?"on":"";b.onclick=function(){level=p[0];[].forEach.call(lv.children,function(c){c.className=""});b.className="on"};lv.appendChild(b)});
+ $("go").onclick=make;
+}
+function makeT(){
+ var T=TOPICS[$("topic").value],G=GENRES[$("genre").value];
+ var title=fill(pick(T.title),level);
+ var vs=shuffle(T.v).slice(0,3);
+ var chorus=T.c.map(function(l){return fill(l,level)});
+ var out=$("out"),h="",txt=title+" ("+G.n+")\n";
+ function sec(name,lines,ad){
+  h+='<div class="sec">'+name+'</div>';txt+="\n["+name+"]\n";
+  lines.forEach(function(l){h+='<p class="l">'+l+'</p>';txt+=l+"\n"});
+  if(ad){h+='<p class="l ad">'+G.ad+'</p>';txt+=G.ad+"\n"}
+ }
+ function vl(i){return vs[i].map(function(l){return fill(l,level)})}
+ var body="";
+ h='<h2>'+title+'</h2><p class="tag">'+G.n+' · '+G.tip+'</p>';
+ sec("Verse 1",vl(0));
+ sec("Chorus",chorus,true);
+ sec("Verse 2",vl(1));
+ sec("Chorus",chorus,true);
+ sec("Bridge",vl(2));
+ sec("Final Chorus",chorus.concat([G.ad]));
+ h+='<div class="row"><button id="again">🔁 Another one</button><button id="copy">📋 Copy</button></div>';
+ out.innerHTML=h;out.hidden=false;song=txt;
+ $("again").onclick=make;
+ $("copy").onclick=function(){
+  var b=$("copy");
+  try{navigator.clipboard.writeText(song).then(function(){b.textContent="✅ Copied"},function(){b.textContent="Long-press to copy"})}catch(e){b.textContent="Long-press to copy"}
+ };
+ out.scrollIntoView({behavior:"smooth",block:"start"});
+}
+var sample=null;
+(async function(){try{if(window.claude&&claude.use){sample=await claude.use("sample")}}catch(e){sample=null}if(sample){$("aiwrap").hidden=false}})();
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+var LVD={mild:"mild swears only (damn, hell, crap)",spicy:"moderate swearing (ass, bastard, goddamn, bloody hell) but no f-word",nuclear:"heavy, creative profanity including the f-word and shit"};
+async function make(){
+ var custom=$("custom").value.trim();
+ var useAI=sample&&(custom||$("ai").checked);
+ if(!useAI){makeT();if(custom){var n=document.createElement("p");n.className="tag";n.textContent="Custom topics need the AI option, which isn’t available here, so I used a built-in topic.";$("out").appendChild(n)}return}
+ var T=custom||TOPICS[$("topic").value].n,G=GENRES[$("genre").value];
+ var btn=$("go");btn.disabled=true;btn.textContent="Writing…";
+ try{
+  var r=await sample.json("Write an original, funny "+G.n+" song about: "+T+". Use "+LVD[level]+". Make it rhyme, be witty, 3 verses plus a repeated chorus, about 24-32 lines total. Never use slurs or insults aimed at race, gender, sexuality, religion or disability, and don’t attack real named people. Do not copy any existing song. Return ONLY JSON in this shape: {\"title\":string,\"sections\":[{\"name\":string,\"lines\":[string]}]}",{cache:false});
+  var secs=r.sections||[];var h='<h2>'+esc(r.title||"Untitled")+'</h2><p class="tag">'+G.n+' · '+G.tip+'</p>',txt=(r.title||"")+" ("+G.n+")\n";
+  secs.forEach(function(s){h+='<div class="sec">'+esc(s.name)+'</div>';txt+="\n["+s.name+"]\n";(s.lines||[]).forEach(function(l){h+='<p class="l">'+esc(l)+'</p>';txt+=l+"\n"})});
+  h+='<div class="row"><button id="again">🔁 Another one</button><button id="copy">📋 Copy</button></div>';
+  var out=$("out");out.innerHTML=h;out.hidden=false;song=txt;
+  $("again").onclick=make;
+  $("copy").onclick=function(){var b=$("copy");try{navigator.clipboard.writeText(song).then(function(){b.textContent="✅ Copied"},function(){b.textContent="Long-press to copy"})}catch(e){b.textContent="Long-press to copy"}};
+  out.scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(e){
+  if(e&&e.code==="not_granted"){sample=null;$("aiwrap").hidden=true}
+  makeT();
+ }finally{btn.disabled=false;btn.textContent="Write me a song"}
+}
+init();
+</script>
+</body>
+</html>
