@@ -1,45 +1,64 @@
 workflows:
   ios-workflow:
-    name: Potty Mouth iOS Build
+    name: Potty Mouth iOS Release
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 90
     environment:
       vars:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
-      node: 20.11.0
-      xcode: 15.4
+        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+      node: 22.12.0
+      xcode: 16.2
       cocoapods: default
     scripts:
-      - name: Set up Node
-        script: |
-          npm install
-      - name: Install dependencies
+      - name: Install npm dependencies
         script: |
           npm ci || npm install
+          cat package.json
+          cat capacitor.config.json || cat capacitor.config.ts || echo "no cap config"
+
       - name: Build web assets
         script: |
-          npm run build || npx ionic build || npx vite build || echo "No build script, using www"
-      - name: Sync Capacitor iOS
+          if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
+          npm run build || echo "no build script"
+          ls -la www || ls -la
+
+      - name: Add iOS platform
         script: |
-          npx cap sync ios
+          rm -rf ios
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npx cap add ios
           npx cap copy ios
+          npx cap sync ios || true
+          ls -la ios/App/ || true
+          cat ios/App/Podfile || echo "still no Podfile"
+
       - name: Install CocoaPods
         script: |
-          cd ios/App && pod install && cd ../..
+          if [ -f "ios/App/Podfile" ]; then
+            cd ios/App && pod install --repo-update
+          else
+            echo "No Podfile found, skipping pod install - will build without pods"
+          fi
+
       - name: Set encryption flag
         script: |
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" ios/App/App/Info.plist
-      - name: Build iOS
+          INFO_PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$INFO_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$INFO_PLIST"
+
+      - name: Set up code signing
         script: |
-          xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          keychain initialize
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create || echo "no signing integration, continuing unsigned"
+          keychain add-certificates || true
+          xcode-project use-profiles || true
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME" || xcode-project build-ipa --workspace "ios/App/App.xcworkspace" --scheme "App"
+
     artifacts:
-      - $CM_BUILD_DIR/App.xcarchive
-    publishing:
-      app_store_connect:
-        auth: integration
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_app_store: false
-        
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      
