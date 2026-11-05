@@ -27,42 +27,71 @@ workflows:
           rm -rf ios
           npx cap add ios
           npx cap sync ios || true
-          echo "=== iOS files ==="
-          ls -la ios/App/App.xcodeproj/ || true
 
       - name: Install CocoaPods
         script: |
-          set +e
           cd ios/App && pod install --no-repo-update || true
-          exit 0
 
       - name: Set encryption flag and bundle ID
         script: |
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" || true
           xcode-project set-bundle-id --project "ios/App/App.xcodeproj" --bundle-id "$BUNDLE_ID"
-          xcode-project set-info-plist --project "ios/App/App.xcodeproj" --bundle-id "$BUNDLE_ID" || true
 
       - name: Save API key
         script: |
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
           chmod 600 /tmp/AuthKey.p8
+          echo "Key saved, length:"
+          wc -c /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
-          set -x
+          set -e
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 --verbose || true
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "No profiles dir"
+          echo "=== Fetching profiles ==="
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
+          echo "=== Profiles in dir ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "=== Adding certs ==="
           keychain add-certificates
-          xcode-project use-profiles --project "ios/App/App.xcodeproj"
+          echo "=== Applying profiles ==="
+          xcode-project use-profiles --project "ios/App/App.xcodeproj" --verbose || true
+          echo "=== Checking applied ==="
+          cat ios/App/App.xcodeproj/project.pbxproj | grep -A2 PROVISIONING_PROFILE || echo "no profile in pbxproj"
 
-      - name: Build IPA
+      - name: Build IPA with manual export
         script: |
           set -x
-          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
+          # Find profile
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH") 2>/dev/null || echo "Potty Mouth Profile")
+          echo "Using profile: $PROFILE_NAME at $PROFILE_PATH"
+          
+          # Archive with manual signing forced
+          xcodebuild -project "ios/App/App.xcodeproj" -scheme "App" -configuration Release -archivePath "$CM_BUILD_DIR/App.xcarchive" archive CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPMENT_TEAM="PAUL KELLY" || xcodebuild -project "ios/App/App.xcodeproj" -scheme "App" -configuration Release -archivePath "$CM_BUILD_DIR/App.xcarchive" archive
+
+          # Export IPA
+          cat > /tmp/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key><string>$PROFILE_NAME</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$CM_BUILD_DIR/App.xcarchive" -exportPath "$CM_BUILD_DIR/ipa" -exportOptionsPlist /tmp/ExportOptions.plist
+          mkdir -p build/ios/ipa
+          cp -r $CM_BUILD_DIR/ipa/*.ipa build/ios/ipa/ || cp -r $CM_BUILD_DIR/ipa/* build/ios/ipa/ || true
+          ls -lh build/ios/ipa/
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/ExportOptions.plist
 
     publishing:
       app_store_connect:
