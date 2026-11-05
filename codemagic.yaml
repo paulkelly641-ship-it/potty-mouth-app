@@ -6,7 +6,6 @@ workflows:
     environment:
       vars:
         BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
-        COCOAPODS_DISABLE_STATS: "true"
       groups:
         - appstore
       node: 22.12.0
@@ -31,8 +30,7 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios/App
-          pod install --no-repo-update --verbose
-          echo "Pods installed OK"
+          pod install --no-repo-update
 
       - name: Set encryption flag
         script: |
@@ -41,17 +39,19 @@ workflows:
       - name: Save API key
         script: |
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
+          ls -lh /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
           keychain add-certificates
-          xcode-project use-profiles --project ios/App/App.xcodeproj
+          ls ~/Library/MobileDevice/Provisioning\ Profiles/
+          xcode-project use-profiles
 
       - name: Build IPA
         script: |
-          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
+          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App" --export-method app-store
 
     artifacts:
       - build/ios/ipa/*.ipa
