@@ -27,35 +27,38 @@ workflows:
           rm -rf ios
           npx cap add ios
           npx cap sync ios || true
-          ls -la ios/App/ || true
+          echo "=== iOS files ==="
+          ls -la ios/App/App.xcodeproj/ || true
 
       - name: Install CocoaPods
         script: |
           set +e
-          if [ -f "ios/App/Podfile" ]; then cd ios/App && pod install --no-repo-update; else echo "No Podfile, trying sync"; npx cap sync ios; cd ios/App && pod install --no-repo-update || true; fi
+          cd ios/App && pod install --no-repo-update || true
           exit 0
 
-      - name: Set encryption flag
+      - name: Set encryption flag and bundle ID
         script: |
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" || true
+          xcode-project set-bundle-id --project "ios/App/App.xcodeproj" --bundle-id "$BUNDLE_ID"
+          xcode-project set-info-plist --project "ios/App/App.xcodeproj" --bundle-id "$BUNDLE_ID" || true
 
       - name: Save API key
         script: |
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
-          ls -l /tmp/AuthKey.p8
+          chmod 600 /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
+          set -x
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
-          echo "Profiles downloaded:"
-          ls -l ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 --verbose || true
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "No profiles dir"
           keychain add-certificates
           xcode-project use-profiles --project "ios/App/App.xcodeproj"
-          echo "Applied profiles"
 
       - name: Build IPA
         script: |
+          set -x
           xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
 
     artifacts:
