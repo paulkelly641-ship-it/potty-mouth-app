@@ -21,12 +21,29 @@ workflows:
         script: |
           if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
           npm run build || true
-      - name: Add iOS platform
+      - name: Add iOS platform and FIX Bundle ID
         script: |
           rm -rf ios
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npx cap add ios || true
-          npx cap sync ios || true
+          npx cap add ios
+          # FORCE fix bundle ID in capacitor.config.json
+          cat capacitor.config.json || cat capacitor.config.ts || true
+          npx cap update ios || true
+          echo "=== Fixing bundle ID to $BUNDLE_ID in ALL files ==="
+          # Fix Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $BUNDLE_ID" "ios/App/App/Info.plist" || true
+          # Fix project.pbxproj - replace ALL occurrences of com.yourname.pottymouth
+          sed -i '' "s/com.yourname.pottymouth/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || sed -i "s/com.yourname.pottymouth/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj
+          sed -i '' "s/io.ionic.starter/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || sed -i "s/io.ionic.starter/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj
+          # Also fix PRODUCT_BUNDLE_IDENTIFIER
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/App/App.xcodeproj/project.pbxproj
+          # Fix bundle id in App's Info.plist inside ios/App
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "ios/App/App/Info.plist" || true
+          echo "Bundle ID now:"
+          grep "PRODUCT_BUNDLE_IDENTIFIER" ios/App/App.xcodeproj/project.pbxproj | head -5
+          npx cap sync ios
+          # Re-fix after sync
+          sed -i '' "s/com.yourname.pottymouth/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || sed -i "s/com.yourname.pottymouth/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj
       - name: Set encryption flag
         script: |
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
@@ -41,32 +58,28 @@ workflows:
           open('/tmp/AuthKey.p8','w').write(data.strip()+'\n')
           print('Key written', len(data))
           "
-          ls -lh /tmp/AuthKey.p8
       - name: Set up code signing - FORCED
         script: |
           set -x
           keychain initialize
-          echo "=== Creating bundle ID ==="
-          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle ID exists - good"
-          echo "=== Fetching signing files with --create ==="
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 --verbose
-          echo "=== Listing profiles ==="
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "No profiles dir yet"
-          ls -lh /Users/builder/Library/MobileDevice/Provisioning\ Profiles/ || true
-          echo "=== Adding certs to keychain ==="
+          echo "=== Creating bundle ID in Apple ==="
+          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle exists"
+          echo "=== Fetching signing files ==="
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
           keychain add-certificates
           echo "=== Using profiles ==="
-          xcode-project use-profiles --project "$XCODE_PROJECT" --verbose || true
-          echo "=== Profiles after use-profiles ==="
-          grep -r "PROVISIONING_PROFILE" ios/App/App.xcodeproj/project.pbxproj || echo "No profile set in pbxproj"
-      - name: Build IPA - with manual signing
+          xcode-project use-profiles --project "$XCODE_PROJECT"
+          echo "=== Checking bundle ID after use-profiles ==="
+          grep "PRODUCT_BUNDLE_IDENTIFIER" ios/App/App.xcodeproj/project.pbxproj | head -5
+          echo "=== Profiles installed ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ | tail -5
+      - name: Build IPA
         script: |
           set -x
-          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME" --verbose ||           xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release archive -archivePath build/App.xcarchive CODE_SIGN_STYLE=Manual ||           xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release archive -archivePath build/App.xcarchive CODE_SIGN_STYLE=Manual
-          ls -lh build/ios/ipa/ || ls -lh build/ || true
+          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
+          ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:
