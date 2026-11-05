@@ -13,74 +13,61 @@ workflows:
       node: 22.12.0
       xcode: 16.2
       cocoapods: default
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
     scripts:
       - name: Install npm dependencies
         script: |
           npm ci || npm install
-
       - name: Build web assets
         script: |
           if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
           npm run build || true
-          ls -la www
-
       - name: Add iOS platform
         script: |
           rm -rf ios
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap add ios || true
-          if [ ! -f "capacitor.config.json" ]; then echo '{ "appId": "com.paulkelly.pottymouthsongwriter", "appName": "Potty Mouth", "webDir": "www" }' > capacitor.config.json; fi
           npx cap sync ios || true
-          npx cap copy ios || true
-
-      - name: Set encryption flag and bundle ID
+      - name: Set encryption flag
         script: |
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
-          echo "Setting bundle id to $BUNDLE_ID"
-          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/" ios/App/App.xcodeproj/project.pbxproj || true
-
-      - name: Save API key fixed
+      - name: Save API key
         script: |
           mkdir -p /tmp
           python3 -c "
           import os
           data = os.environ.get('APP_STORE_CONNECT_PRIVATE_KEY','')
-          # fix literal \n
           if '\\n' in data:
               data = data.replace('\\n','\n')
-          # ensure proper newlines
-          data = data.strip()
-          open('/tmp/AuthKey.p8','w').write(data + '\n')
-          print('Key size:', len(data))
+          open('/tmp/AuthKey.p8','w').write(data.strip()+'\n')
+          print('Key written', len(data))
           "
-          head -1 /tmp/AuthKey.p8
-          tail -1 /tmp/AuthKey.p8
-          cat /tmp/AuthKey.p8 | wc -c
-
-      - name: Set up code signing
+          ls -lh /tmp/AuthKey.p8
+      - name: Set up code signing - FORCED
         script: |
           set -x
           keychain initialize
-          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle exists"
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
+          echo "=== Creating bundle ID ==="
+          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle ID exists - good"
+          echo "=== Fetching signing files with --create ==="
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 --verbose
+          echo "=== Listing profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "No profiles dir yet"
+          ls -lh /Users/builder/Library/MobileDevice/Provisioning\ Profiles/ || true
+          echo "=== Adding certs to keychain ==="
           keychain add-certificates
-          xcode-project use-profiles --project "$XCODE_PROJECT"
-
-      - name: Build IPA
+          echo "=== Using profiles ==="
+          xcode-project use-profiles --project "$XCODE_PROJECT" --verbose || true
+          echo "=== Profiles after use-profiles ==="
+          grep -r "PROVISIONING_PROFILE" ios/App/App.xcodeproj/project.pbxproj || echo "No profile set in pbxproj"
+      - name: Build IPA - with manual signing
         script: |
-          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
-
+          set -x
+          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME" --verbose ||           xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release archive -archivePath build/App.xcarchive CODE_SIGN_STYLE=Manual ||           xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release archive -archivePath build/App.xcarchive CODE_SIGN_STYLE=Manual
+          ls -lh build/ios/ipa/ || ls -lh build/ || true
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
-
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
