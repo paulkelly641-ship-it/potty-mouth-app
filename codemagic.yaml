@@ -10,6 +10,8 @@ workflows:
         BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
         XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
+        APP_STORE_CONNECT_KEY_ID: "4J7TXK56C9"
+        APP_STORE_CONNECT_ISSUER: "822ddf42-0c9d-41a6-bdea-066fe770ce07"
       node: 22.12.0
       xcode: 16.2
       cocoapods: default
@@ -39,29 +41,27 @@ workflows:
           if [ ! -f "capacitor.config.json" ]; then echo '{ "appId": "com.paulkelly.pottymouthsongwriter", "appName": "Potty Mouth", "webDir": "www" }' > capacitor.config.json; fi
           npx cap sync ios || true
           npx cap copy ios || true
-          ls -la ios/App/App.xcodeproj || true
 
       - name: Set encryption flag and bundle ID manually
         script: |
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
           echo "Setting bundle id to $BUNDLE_ID"
           sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/" ios/App/App.xcodeproj/project.pbxproj || true
-          sed -i '' "s/com.getcapacitor.myapp/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
 
       - name: Save API key
         script: |
-          echo "Key ID: $APP_STORE_CONNECT_KEY_IDENTIFIER"
-          echo "Issuer ID: $APP_STORE_CONNECT_ISSUER_ID"
+          echo "Using Key ID: $APP_STORE_CONNECT_KEY_ID"
+          echo "Using Issuer ID: $APP_STORE_CONNECT_ISSUER"
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
           ls -lh /tmp/AuthKey.p8
+          echo "First line:"
+          head -1 /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
           set -x
           keychain initialize
-          # Create bundle id if it does not exist
-          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || true
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_ID --issuer-id $APP_STORE_CONNECT_ISSUER --private-key @/tmp/AuthKey.p8
           keychain add-certificates
           xcode-project use-profiles --project "$XCODE_PROJECT"
 
@@ -72,13 +72,12 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - ios/App/App.xcodeproj/project.pbxproj
 
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        key_id: 4J7TXK56C9
+        issuer_id: 822ddf42-0c9d-41a6-bdea-066fe770ce07
         submit_to_testflight: true
         submit_to_app_store: false
         
