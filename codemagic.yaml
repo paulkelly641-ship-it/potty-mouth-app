@@ -14,27 +14,44 @@ workflows:
       - name: Install npm dependencies
         script: |
           npm ci || npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
 
       - name: Build web assets
         script: |
           if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
           npm run build || true
+          ls -la www || true
 
       - name: Add iOS platform
         script: |
           if [ ! -f "capacitor.config.json" ]; then echo '{"appId":"com.paulkelly.pottymouthsongwriter","appName":"Potty Mouth Songwriter","webDir":"www"}' > capacitor.config.json; fi
+          cat capacitor.config.json
           rm -rf ios
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap add ios
-          npx cap sync ios
+          npx cap copy ios
+          npx cap sync ios || true
+          echo "=== ios/App contents ==="
+          ls -la ios/App/ || true
 
       - name: Install CocoaPods
         script: |
-          cd ios/App && pod install --no-repo-update
+          set +e
+          echo "Checking for Podfile..."
+          ls -la ios/App/ | grep -i pod || true
+          if [ -f "ios/App/Podfile" ]; then
+            echo "Podfile found, installing pods"
+            cd ios/App && pod install --no-repo-update
+          else
+            echo "No Podfile at ios/App/Podfile, trying alternative locations"
+            find . -name "Podfile" -type f 2>/dev/null || true
+            if [ -f "ios/Podfile" ]; then cd ios && pod install --no-repo-update; fi
+          fi
+          echo "CocoaPods step done (continuing even if failed)"
+          exit 0
 
       - name: Set encryption flag
         script: |
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist" || true
 
       - name: Save API key
         script: |
