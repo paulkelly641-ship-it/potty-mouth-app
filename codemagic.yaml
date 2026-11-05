@@ -22,15 +22,23 @@ workflows:
 
       - name: Add iOS platform
         script: |
+          if [ ! -f "capacitor.config.json" ]; then echo '{"appId":"com.paulkelly.pottymouthsongwriter","appName":"Potty Mouth Songwriter","webDir":"www"}' > capacitor.config.json; fi
           rm -rf ios
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap add ios
-          npx cap copy ios
+          npx cap sync ios
+          ls -la ios/App/
 
       - name: Install CocoaPods
         script: |
-          cd ios/App
-          pod install --no-repo-update
+          if [ -f "ios/App/Podfile" ]; then
+            cd ios/App && pod install --no-repo-update
+          else
+            echo "No Podfile, checking ios folder"
+            ls -la ios/App/ || true
+            npx cap sync ios
+            cd ios/App && pod install --no-repo-update || echo "pod install failed but continuing"
+          fi
 
       - name: Set encryption flag
         script: |
@@ -39,14 +47,12 @@ workflows:
       - name: Save API key
         script: |
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
-          ls -lh /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
           keychain add-certificates
-          ls ~/Library/MobileDevice/Provisioning\ Profiles/
           xcode-project use-profiles
 
       - name: Build IPA
