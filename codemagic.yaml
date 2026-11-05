@@ -1,47 +1,45 @@
 workflows:
   ios-workflow:
-    name: Potty Mouth iOS Release
+    name: Potty Mouth iOS Build
     instance_type: mac_mini_m2
-    max_build_duration: 90
+    max_build_duration: 60
     environment:
       vars:
-        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
-      node: 22.12.0
-      xcode: 16.2
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: 20.11.0
+      xcode: 15.4
       cocoapods: default
     scripts:
-      - name: Install npm dependencies
+      - name: Set up Node
+        script: |
+          npm install
+      - name: Install dependencies
         script: |
           npm ci || npm install
-
       - name: Build web assets
         script: |
-          if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
-          npm run build || true
-
-      - name: Add iOS platform
+          npm run build || npx ionic build || npx vite build || echo "No build script, using www"
+      - name: Sync Capacitor iOS
         script: |
-          rm -rf ios
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npx cap add ios
+          npx cap sync ios
           npx cap copy ios
-
+      - name: Install CocoaPods
+        script: |
+          cd ios/App && pod install && cd ../..
       - name: Set encryption flag
         script: |
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
-
-      - name: Build unsigned IPA
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" ios/App/App/Info.plist
+      - name: Build iOS
         script: |
-          cd ios/App
-          xcodebuild -project App.xcodeproj -scheme App -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -derivedDataPath ../../build/ios/derived -archivePath ../../build/ios/App.xcarchive archive
-          mkdir -p ../../build/ios/ipa
-          cd ../..
-          xcodebuild -exportArchive -archivePath build/ios/App.xcarchive -exportPath build/ios/ipa -exportOptionsPlist <(echo '{ "method":"ad-hoc", "signingStyle":"manual" }') || true
-          # fallback - just create ipa from app
-          APP_PATH=$(find build/ios/derived -name "*.app" | head -1)
-          if [ -n "$APP_PATH" ]; then mkdir -p Payload; cp -r "$APP_PATH" Payload/; zip -r build/ios/ipa/App.ipa Payload; rm -rf Payload; echo "IPA created"; fi
-
+          xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
     artifacts:
-      - build/ios/ipa/*.ipa
-      - build/ios/*.xcarchive
-      
+      - $CM_BUILD_DIR/App.xcarchive
+    publishing:
+      app_store_connect:
+        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_app_store: false
+        
