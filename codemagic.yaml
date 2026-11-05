@@ -1,45 +1,85 @@
 workflows:
   ios-workflow:
-    name: Potty Mouth iOS Build
+    name: Potty Mouth iOS Release
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 90
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
-        XCODE_SCHEME: "App"
-      node: 20.11.0
-      xcode: 15.4
-      cocoapods: default
+        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+        APP_STORE_CONNECT_KEY_IDENTIFIER: "4J7TXK56C9"
+        APP_STORE_CONNECT_ISSUER_ID: "822ddf42-0c9d-41a6-bdea-066fe770ce07"
+      groups:
+        - appstore
+      node: 22.12.0
+      xcode: 16.2
     scripts:
-      - name: Set up Node
-        script: |
-          npm install
-      - name: Install dependencies
+      - name: Install npm dependencies
         script: |
           npm ci || npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+
       - name: Build web assets
         script: |
-          npm run build || npx ionic build || npx vite build || echo "No build script, using www"
-      - name: Sync Capacitor iOS
+          if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
+          npm run build || true
+
+      - name: Add iOS platform
         script: |
-          npx cap sync ios
-          npx cap copy ios
+          if [ ! -f "capacitor.config.json" ]; then echo '{"appId":"com.paulkelly.pottymouthsongwriter","appName":"Potty Mouth Songwriter","webDir":"www"}' > capacitor.config.json; fi
+          rm -rf ios
+          npx cap add ios
+          npx cap sync ios || true
+
       - name: Install CocoaPods
         script: |
-          cd ios/App && pod install && cd ../..
-      - name: Set encryption flag
+          cd ios/App && pod install --no-repo-update || true
+
+      - name: Set encryption flag and bundle ID manually
         script: |
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" ios/App/App/Info.plist
-      - name: Build iOS
+          set -e
+          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" || true
+          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/g" ios/App/App.xcodeproj/project.pbxproj || sed -i "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/g" ios/App/App.xcodeproj/project.pbxproj
+          grep PRODUCT_BUNDLE_IDENTIFIER ios/App/App.xcodeproj/project.pbxproj | head -3
+
+      - name: Save API key
         script: |
-          xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          echo "Key ID: $APP_STORE_CONNECT_KEY_IDENTIFIER"
+          echo "Issuer ID: $APP_STORE_CONNECT_ISSUER_ID"
+          if [ -z "$APP_STORE_CONNECT_PRIVATE_KEY" ]; then echo "ERROR: PRIVATE_KEY is empty! Check Codemagic env group appstore"; exit 1; fi
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
+          chmod 600 /tmp/AuthKey.p8
+          ls -lh /tmp/AuthKey.p8
+
+      - name: Set up code signing
+        script: |
+          set -x
+          keychain initialize
+          echo "=== Fetching signing files ==="
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" --private-key @/tmp/AuthKey.p8
+          echo "=== Listing profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "no profiles"
+          ls -lh ~/Library/MobileDevice/Certificates/ || true
+          keychain add-certificates
+          echo "=== Applying profiles to project ==="
+          xcode-project use-profiles --project "ios/App/App.xcodeproj"
+
+      - name: Build IPA
+        script: |
+          set -x
+          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
+          echo "=== Build output ==="
+          ls -lh build/ios/ipa/
+          find build -name "*.ipa" -type f | head -5
+
     artifacts:
-      - $CM_BUILD_DIR/App.xcarchive
+      - build/ios/ipa/*.ipa
+      - build/**/*.ipa
+
     publishing:
       app_store_connect:
-        auth: integration
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
         submit_to_app_store: false
         
