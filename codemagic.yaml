@@ -39,49 +39,52 @@ workflows:
           if [ ! -f "capacitor.config.json" ]; then echo '{ "appId": "com.paulkelly.pottymouthsongwriter", "appName": "Potty Mouth", "webDir": "www" }' > capacitor.config.json; fi
           npx cap sync ios || true
           npx cap copy ios || true
-          ls -la ios/App/App.xcodeproj || true
 
       - name: Set encryption flag and bundle ID manually
         script: |
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
-          echo "Setting bundle id to $BUNDLE_ID"
           sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/" ios/App/App.xcodeproj/project.pbxproj || true
           sed -i '' "s/com.getcapacitor.myapp/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
           sed -i '' "s/io.ionic.starter/$BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
 
-      - name: Save API key - FIXED PEM
+      - name: Save API key - FINAL FIX
         script: |
-          echo "Key ID: $APP_STORE_CONNECT_KEY_IDENTIFIER"
-          echo "Issuer ID: $APP_STORE_CONNECT_ISSUER_ID"
-          # Fix escaped \n issue - Codemagic sometimes stores literal \n
-          mkdir -p /tmp
-          printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/raw.p8
-          # Convert literal \n to real newline if needed
-          if grep -q "\\n" /tmp/raw.p8; then
-            echo "Fixing escaped newlines..."
-            sed 's/\\n/\n/g' /tmp/raw.p8 | sed 's/\n/
-/g' > /tmp/AuthKey.p8
-            # Second pass with printf %b
-            printf "%b" "$(cat /tmp/raw.p8)" > /tmp/AuthKey.p8 2>/dev/null || true
-          else
-            cp /tmp/raw.p8 /tmp/AuthKey.p8
-          fi
-          echo "Key size: $(wc -c < /tmp/AuthKey.p8) bytes"
+          echo "Using Key ID: $APP_STORE_CONNECT_KEY_IDENTIFIER"
+          echo "Using Issuer ID: $APP_STORE_CONNECT_ISSUER_ID"
+          # PYTHON FIX - properly handle \n
+          python3 << 'PYEOF'
+          import os
+          key = os.environ.get('APP_STORE_CONNECT_PRIVATE_KEY','')
+          # Replace literal \n with real newline
+          if '\\n' in key:
+              key = key.replace('\\n', '\n')
+          # Remove any \r
+          key = key.replace('\r','')
+          key = key.strip()
+          # Ensure it starts/ends correctly
+          if not key.startswith('-----BEGIN'):
+              # Try to find begin
+              idx = key.find('-----BEGIN')
+              if idx >=0:
+                  key = key[idx:]
+          with open('/tmp/AuthKey.p8','w') as f:
+              f.write(key)
+              if not key.endswith('\n'):
+                  f.write('\n')
+          print(f"Written {len(key)} chars")
+          PYEOF
+          ls -lh /tmp/AuthKey.p8
           head -1 /tmp/AuthKey.p8
           tail -1 /tmp/AuthKey.p8
-          if ! grep -q "BEGIN PRIVATE KEY" /tmp/AuthKey.p8; then
-            echo "ERROR: Key is not PEM format! Content:"
-            cat /tmp/AuthKey.p8
-            exit 1
-          fi
-          echo "✅ Valid PEM"
+          wc -c /tmp/AuthKey.p8
+          # Verify PEM
+          openssl pkcs8 -in /tmp/AuthKey.p8 -inform PEM -nocrypt -check 2>&1 | head -5 || echo "openssl check done"
 
       - name: Set up code signing
         script: |
-          set -x
+          set -e
           keychain initialize
-          # Create bundle id if needed
-          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle ID exists or create failed, continuing..."
+          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || echo "Bundle ID exists, continuing..."
           app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
           keychain add-certificates
           xcode-project use-profiles --project "$XCODE_PROJECT"
