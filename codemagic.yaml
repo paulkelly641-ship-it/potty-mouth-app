@@ -6,11 +6,11 @@ workflows:
     environment:
       vars:
         BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+        COCOAPODS_DISABLE_STATS: "true"
       groups:
         - appstore
       node: 22.12.0
       xcode: 16.2
-      cocoapods: default
     scripts:
       - name: Install npm dependencies
         script: |
@@ -20,7 +20,6 @@ workflows:
         script: |
           if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
           npm run build || true
-          ls -la www
 
       - name: Add iOS platform
         script: |
@@ -32,8 +31,8 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios/App
-          pod repo update || true
-          pod install --verbose || pod install
+          pod install --no-repo-update --verbose
+          echo "Pods installed OK"
 
       - name: Set encryption flag
         script: |
@@ -42,7 +41,6 @@ workflows:
       - name: Save API key
         script: |
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
-          ls -lh /tmp/AuthKey.p8
 
       - name: Set up code signing
         script: |
