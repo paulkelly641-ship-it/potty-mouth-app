@@ -1,0 +1,61 @@
+workflows:
+  ios-workflow:
+    name: Potty Mouth iOS Release
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      vars:
+        BUNDLE_ID: "com.paulkelly.pottymouthsongwriter"
+      groups:
+        - appstore
+      node: 22.12.0
+      xcode: 16.2
+      cocoapods: default
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          npm ci || npm install
+
+      - name: Build web assets
+        script: |
+          if [ -f "index.html" ] && [ ! -d "www" ]; then mkdir -p www; cp index.html www/; fi
+          npm run build || true
+          ls -la www
+
+      - name: Add iOS platform
+        script: |
+          rm -rf ios
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npx cap add ios
+          npx cap copy ios
+
+      - name: Set encryption flag
+        script: |
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "ios/App/App/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "ios/App/App/Info.plist"
+
+      - name: Save API key
+        script: |
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        private_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        submit_to_testflight: false
+        submit_to_app_store: true
+        
