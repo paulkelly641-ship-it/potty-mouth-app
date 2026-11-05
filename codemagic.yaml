@@ -27,18 +27,10 @@ workflows:
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap add ios
           npx cap sync ios
-          ls -la ios/App/
 
       - name: Install CocoaPods
         script: |
-          if [ -f "ios/App/Podfile" ]; then
-            cd ios/App && pod install --no-repo-update
-          else
-            echo "No Podfile, checking ios folder"
-            ls -la ios/App/ || true
-            npx cap sync ios
-            cd ios/App && pod install --no-repo-update || echo "pod install failed but continuing"
-          fi
+          cd ios/App && pod install --no-repo-update
 
       - name: Set encryption flag
         script: |
@@ -57,7 +49,7 @@ workflows:
 
       - name: Build IPA
         script: |
-          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App" --export-method app-store
+          xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
 
     artifacts:
       - build/ios/ipa/*.ipa
