@@ -21,6 +21,9 @@ workflows:
           rm -rf ios
           npx cap add ios
           npx cap sync ios
+          cd ios/App
+          agvtool new-version -all $BUILD_NUMBER || echo "bump version $BUILD_NUMBER"
+          cd ../..
       - name: Code Signing
         script: |
           keychain initialize
