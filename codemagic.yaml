@@ -1,4 +1,4 @@
-lworkflows:
+workflows:
   ios-workflow:
     name: Potty Mouth
     instance_type: mac_mini_m2
