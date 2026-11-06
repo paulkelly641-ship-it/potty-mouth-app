@@ -24,7 +24,7 @@ workflows:
       - name: Code Signing
         script: |
           keychain initialize
-          app-store-connect bundle-ids create $BUNDLE_ID --name PottyMouth --platform IOS || echo "bundle exists"
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save || echo "cert exists"
           app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
           keychain add-certificates
           xcode-project use-profiles
