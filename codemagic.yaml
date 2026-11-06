@@ -1,0 +1,48 @@
+workflows:
+  ios-workflow:
+    name: Potty Mouth
+    instance_type: mac_mini_m2
+    environment:
+      groups: [appstore]
+      vars:
+        BUNDLE_ID: com.paulkelly.pottymouthsongwriter
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+      node: 22.12.0
+      xcode: 16.2
+      cocoapods: default
+    scripts:
+      - name: Build App
+        script: |
+          npm ci || npm install
+          echo '{"appId":"com.paulkelly.pottymouthsongwriter","appName":"Potty Mouth","webDir":"www"}' > capacitor.config.json
+          if [ -f index.html ] && [ ! -d www ]; then mkdir -p www; cp index.html www/; fi
+          npm run build || true
+          rm -rf ios
+          npx cap add ios
+          npx cap sync ios
+      - name: Code Signing
+        script: |
+          python3 -c "
+          import os, pathlib
+          k=os.environ['APP_STORE_CONNECT_PRIVATE_KEY']
+          k=k.replace(r'\n','\n').strip()
+          pathlib.Path('/tmp/key.p8').write_text(k+'\n')
+          print(f'KEY FIXED: {len(k)} chars, {k.count(chr(10))+1} lines')
+          "
+          keychain initialize
+          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8 || true
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
