@@ -30,7 +30,7 @@ workflows:
       - name: Code Signing
         script: |
           keychain initialize
-          app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY || true
+          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY || true
           app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
           keychain add-certificates
           xcode-project use-profiles
