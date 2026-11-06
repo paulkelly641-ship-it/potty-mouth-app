@@ -1,4 +1,4 @@
-workflows:
+lworkflows:
   ios-workflow:
     name: Potty Mouth
     instance_type: mac_mini_m2
@@ -24,7 +24,7 @@ workflows:
       - name: Code Signing
         script: |
           keychain initialize
-          app-store-connect certificates create --type IOS_DISTRIBUTION --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY --save || echo "cert exists"
+          app-store-connect app-ids create-bundle-id --bundle-id-identifier $BUNDLE_ID --name PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY || echo "bundle exists"
           app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
           keychain add-certificates
           xcode-project use-profiles
