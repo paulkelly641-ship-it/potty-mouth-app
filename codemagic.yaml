@@ -24,8 +24,7 @@ workflows:
       - name: Code Signing
         script: |
           keychain initialize
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save || echo "cert exists"
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --certificate-key @env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA
