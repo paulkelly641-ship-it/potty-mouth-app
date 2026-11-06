@@ -23,16 +23,14 @@ workflows:
           npx cap sync ios
       - name: Code Signing
         script: |
-          python3 -c "
-          import os, pathlib
-          k=os.environ['APP_STORE_CONNECT_PRIVATE_KEY']
-          k=k.replace(r'\n','\n').strip()
-          pathlib.Path('/tmp/key.p8').write_text(k+'\n')
-          print(f'KEY FIXED: {len(k)} chars, {k.count(chr(10))+1} lines')
-          "
           keychain initialize
-          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8 || true
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8
+          echo "=== CREATE BUNDLE ID ==="
+          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY || echo "bundle exists"
+          echo "=== FETCH SIGNING FILES ==="
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
+          echo "=== LIST FILES ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || echo "no profiles folder"
+          ls -lh $HOME/Library/MobileDevice/Certificates/ || echo "no certs folder"
           keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA
