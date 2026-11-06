@@ -22,7 +22,6 @@ workflows:
             "webDir": "www"
           }
           EOF
-          cat capacitor.config.json
       - name: Build Web and Add iOS
         script: |
           if [ -f index.html ] && [ ! -d www ]; then mkdir -p www; cp index.html www/; fi
@@ -30,13 +29,9 @@ workflows:
           rm -rf ios
           npx cap add ios
           npx cap sync ios
-          echo "=== BUNDLE CHECK ==="
-          grep -r PRODUCT_BUNDLE_IDENTIFIER ios/App/App.xcodeproj/ | head -3
-      - name: Save API key
-        script: |
-          python3 -c "import os; d=os.environ['APP_STORE_CONNECT_PRIVATE_KEY']; open('/tmp/AuthKey.p8','w').write(d.replace('\\n','\n').strip()+'\n')"
       - name: Code Signing
         script: |
+          python3 -c "import os, pathlib; k=os.environ['APP_STORE_CONNECT_PRIVATE_KEY']; k=k.replace(r'\n','\n').strip(); pathlib.Path('/tmp/AuthKey.p8').write_text(k+'\n'); print(f'Wrote {len(k)} chars')"
           keychain initialize
           app-store-connect create-bundle-id $BUNDLE_ID "Potty Mouth" --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8 || true
           app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/AuthKey.p8
