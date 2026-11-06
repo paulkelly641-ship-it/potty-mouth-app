@@ -12,16 +12,10 @@ workflows:
       xcode: 16.2
       cocoapods: default
     scripts:
-      - name: Fix Bundle ID
+      - name: Build App
         script: |
           npm ci || npm install
-          cat > capacitor.config.json << 'EOF'
-          {
-            "appId": "com.paulkelly.pottymouthsongwriter",
-            "appName": "Potty Mouth",
-            "webDir": "www"
-          }
-          EOF
+          echo '{"appId":"com.paulkelly.pottymouthsongwriter","appName":"Potty Mouth","webDir":"www"}' > capacitor.config.json
           if [ -f index.html ] && [ ! -d www ]; then mkdir -p www; cp index.html www/; fi
           npm run build || true
           rm -rf ios
@@ -29,9 +23,16 @@ workflows:
           npx cap sync ios
       - name: Code Signing
         script: |
+          python3 -c "
+          import os, pathlib
+          k=os.environ['APP_STORE_CONNECT_PRIVATE_KEY']
+          k=k.replace(r'\n','\n').strip()
+          pathlib.Path('/tmp/key.p8').write_text(k+'\n')
+          print(f'KEY FIXED: {len(k)} chars, {k.count(chr(10))+1} lines')
+          "
           keychain initialize
-          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY || true
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
+          app-store-connect create-bundle-id $BUNDLE_ID PottyMouth --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8 || true
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --issuer-id $APP_STORE_CONNECT_ISSUER_ID --private-key @/tmp/key.p8
           keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA
